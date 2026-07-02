@@ -1014,7 +1014,6 @@ function Import-PSModule {
 
         if ($MaxVersion) {
             Write-Verbose "A MaximumVersion of $MaxVersion was specified for $ModuleName. Only this version will be imported."
-
             $highestVersion = (Get-Module -Name $ModuleName -ListAvailable | Where-Object {$_.Version -le $MaxVersion} | Sort-Object -Property Version -Descending | Select-Object -First 1).Version.ToString()
         } else {
             $highestVersion = (Get-Module -Name $ModuleName -ListAvailable | Sort-Object -Property Version -Descending | Select-Object -First 1).Version.ToString()
@@ -1036,16 +1035,9 @@ function Import-PSModule {
         if ($loadError) {
             Write-Error -Message "Error loading module $ModuleName."
         }
-
-        # Check that Graph modules have dependent module (Authentication) loaded with the same version and throw an error if they are not the same version. Only check for non-Auth modules since they will have a RequiredModules statement in the manifest to load the Auth module
-        if ($ModuleName -like 'Microsoft.Graph.*' -and $ModuleName -ne 'Microsoft.Graph.Authentication'){            
-            $GraphModule = Get-Module -Name $ModuleName | Sort-Object Version -Descending
-            $AuthModule = Get-Module -Name 'Microsoft.Graph.Authentication' | Sort-Object Version -Descending
-
-            If (($GraphModule).Version -ne ($AuthModule).Version) {
-                Write-Error "The version for loaded modules $ModuleName ($($GraphModule.Version.ToString())) and Microsoft.Graph.Authentication ($($AuthModule.Version.ToString())) are not matching and will cause calls to Microsoft Graph to fail. Run `"Install-SOAPrerequisites -ModulesOnly`" to ensure the latest version of all required Microsoft.Graph modules is installed. If the latest version is installed, open a new PowerShell window."
-                Exit-Script
-            }
+        $loadedModule = Get-Module -Name $ModuleName | Select-Object -Last 1
+        if ($loadedModule) {
+            Write-Verbose -Message "Module $ModuleName version $($loadedModule.Version.ToString()) is loaded."
         }
     }
 }
@@ -2451,7 +2443,8 @@ Function Install-SOAPrerequisites {
             }
         }
 
-        # When EntraAppOnly is used, this script may not be connected to Microsoft Graph
+        # When EntraAppOnly is used, the Graph module may not be loaded or connected to Microsoft Graph
+        Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit:$UseImplicitLoading
         switch ($CloudEnvironment) {
             "Commercial"   {$cloud = 'Global'}
             "USGovGCC"     {$cloud = 'Global'}
